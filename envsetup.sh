@@ -2,12 +2,14 @@ function hmm() {
 cat <<EOF
 Invoke ". build/envsetup.sh" from your shell to add the following functions to your environment:
 - lunch:   lunch <product_name>-<build_variant>
-- tapas:   tapas [<App1> <App2> ...] [arm|x86|mips] [eng|userdebug|user]
+- tapas:   tapas [<App1> <App2> ...] [arm|x86|mips|armv5] [eng|userdebug|user]
 - croot:   Changes directory to the top of the tree.
 - cout:    Changes directory to out.
 - m:       Makes from the top of the tree.
-- mm:      Builds all of the modules in the current directory.
-- mmm:     Builds all of the modules in the supplied directories.
+- mm:      Builds all of the modules in the current directory, but not their dependencies.
+- mmm:     Builds all of the modules in the supplied directories, but not their dependencies.
+- mma:     Builds all of the modules in the current directory, and their dependencies.
+- mmma:    Builds all of the modules in the supplied directories, and their dependencies.
 - cgrep:   Greps on all local C/C++ files.
 - jgrep:   Greps on all local Java files.
 - resgrep: Greps on all local res/*.xml files.
@@ -36,7 +38,7 @@ function get_abs_build_var()
         echo "Couldn't locate the top of the tree.  Try setting TOP." >&2
         return
     fi
-    (cd $T; CALLED_FROM_SETUP=true BUILD_SYSTEM=build/core \
+    (\cd $T; CALLED_FROM_SETUP=true BUILD_SYSTEM=build/core \
       make --no-print-directory -C "$T" -f build/core/config.mk dumpvar-abs-$1)
 }
 
@@ -137,11 +139,11 @@ function setpaths()
     export ANDROID_EABI_TOOLCHAIN=
     local ARCH=$(get_build_var TARGET_ARCH)
     case $ARCH in
-        x86) toolchaindir=x86/i686-linux-android-4.6/bin
+        x86) toolchaindir=x86/i686-linux-android-$targetgccversion/bin
             ;;
         arm) toolchaindir=arm/arm-linux-androideabi-$targetgccversion/bin
             ;;
-        mips) toolchaindir=mips/mipsel-linux-android-4.6/bin
+        mips) toolchaindir=mips/mipsel-linux-android-$targetgccversion/bin
             ;;
         *)
             echo "Can't find toolchain for unknown architecture: $ARCH"
@@ -170,7 +172,7 @@ function setpaths()
 
     export ANDROID_TOOLCHAIN=$ANDROID_EABI_TOOLCHAIN
     export ANDROID_QTOOLS=$T/development/emulator/qtools
-    export ANDROID_DEV_SCRIPTS=$T/development/scripts
+    export ANDROID_DEV_SCRIPTS=$T/development/scripts:$T/prebuilts/devtools/tools
     export ANDROID_BUILD_PATHS=$(get_build_var ANDROID_BUILD_PATHS):$ANDROID_QTOOLS:$ANDROID_TOOLCHAIN$ARM_EABI_TOOLCHAIN_PATH$CODE_REVIEWS:$ANDROID_DEV_SCRIPTS:
     export PATH=$ANDROID_BUILD_PATHS$PATH
 
@@ -527,7 +529,7 @@ function lunch()
         answer=$1
     else
         print_lunch_menu
-        echo -n "Which would you like? [full-eng] "
+        echo -n "Which would you like? [aosp_arm-eng] "
         read answer
     fi
 
@@ -535,7 +537,7 @@ function lunch()
 
     if [ -z "$answer" ]
     then
-        selection=full-eng
+        selection=aosp_arm-eng
     elif (echo -n $answer | grep -q -e "^[0-9][0-9]*$")
     then
         if [ $answer -le ${#LUNCH_MENU_CHOICES[@]} ]
@@ -588,6 +590,8 @@ function lunch()
 
     echo
 
+    fixup_common_out_dir
+
     set_stuff_for_environment
     printconfig
 }
@@ -609,9 +613,9 @@ complete -F _lunch lunch
 # Run tapas with one ore more app names (from LOCAL_PACKAGE_NAME)
 function tapas()
 {
-    local arch=$(echo -n $(echo $* | xargs -n 1 echo | \grep -E '^(arm|x86|mips)$'))
+    local arch=$(echo -n $(echo $* | xargs -n 1 echo | \grep -E '^(arm|x86|mips|armv5)$'))
     local variant=$(echo -n $(echo $* | xargs -n 1 echo | \grep -E '^(user|userdebug|eng)$'))
-    local apps=$(echo -n $(echo $* | xargs -n 1 echo | \grep -E -v '^(user|userdebug|eng|arm|x86|mips)$'))
+    local apps=$(echo -n $(echo $* | xargs -n 1 echo | \grep -E -v '^(user|userdebug|eng|arm|x86|mips|armv5)$'))
 
     if [ $(echo $arch | wc -w) -gt 1 ]; then
         echo "tapas: Error: Multiple build archs supplied: $arch"
@@ -626,6 +630,7 @@ function tapas()
     case $arch in
       x86)   product=full_x86;;
       mips)  product=full_mips;;
+      armv5) product=generic_armv5;;
     esac
     if [ -z "$variant" ]; then
         variant=eng
@@ -703,16 +708,13 @@ function gettop
             # faked up with symlink names.
             PWD= /bin/pwd
         else
-            # We redirect cd to /dev/null in case it's aliased to
-            # a command that prints something as a side-effect
-            # (like pushd)
             local HERE=$PWD
             T=
             while [ \( ! \( -f $TOPFILE \) \) -a \( $PWD != "/" \) ]; do
-                cd .. > /dev/null
+                \cd ..
                 T=`PWD= /bin/pwd`
             done
-            cd $HERE > /dev/null
+            \cd $HERE
             if [ -f "$T/$TOPFILE" ]; then
                 echo $T
             fi
@@ -724,7 +726,7 @@ function m()
 {
     T=$(gettop)
     if [ "$T" ]; then
-        make -C $T $@
+        make -C $T -f build/core/main.mk $@
     else
         echo "Couldn't locate the top of the tree.  Try setting TOP."
     fi
@@ -733,29 +735,33 @@ function m()
 function findmakefile()
 {
     TOPFILE=build/core/envsetup.mk
-    # We redirect cd to /dev/null in case it's aliased to
-    # a command that prints something as a side-effect
-    # (like pushd)
     local HERE=$PWD
     T=
     while [ \( ! \( -f $TOPFILE \) \) -a \( $PWD != "/" \) ]; do
         T=`PWD= /bin/pwd`
         if [ -f "$T/Android.mk" ]; then
             echo $T/Android.mk
-            cd $HERE > /dev/null
+            \cd $HERE
             return
         fi
-        cd .. > /dev/null
+        \cd ..
     done
-    cd $HERE > /dev/null
+    \cd $HERE
 }
 
 function mm()
 {
+    local MM_MAKE=make
+    local ARG=
+    for ARG in $@ ; do
+        if [ "$ARG" = mka ]; then
+            MM_MAKE=mka
+        fi
+    done
     # If we're sitting in the root of the build tree, just do a
     # normal make.
     if [ -f build/core/envsetup.mk -a -f Makefile ]; then
-        make $@
+        $MM_MAKE $@
     else
         # Find the closest Android.mk file.
         T=$(gettop)
@@ -767,13 +773,14 @@ function mm()
         elif [ ! "$M" ]; then
             echo "Couldn't locate a makefile from the current directory."
         else
-            ONE_SHOT_MAKEFILE=$M make -C $T all_modules $@
+            ONE_SHOT_MAKEFILE=$M $MM_MAKE -C $T -f build/core/main.mk all_modules $@
         fi
     fi
 }
 
 function mmm()
 {
+    local MMM_MAKE=make
     T=$(gettop)
     if [ "$T" ]; then
         local MAKEFILE=
@@ -789,7 +796,7 @@ function mmm()
             fi
             DIR=`echo $DIR | sed -e 's/:.*//' -e 's:/$::'`
             if [ -f $DIR/Android.mk ]; then
-                TO_CHOP=`(cd -P -- $T && pwd -P) | wc -c | tr -d ' '`
+                TO_CHOP=`(\cd -P -- $T && pwd -P) | wc -c | tr -d ' '`
                 TO_CHOP=`expr $TO_CHOP + 1`
                 START=`PWD= /bin/pwd`
                 MFILE=`echo $START | cut -c${TO_CHOP}-`
@@ -808,23 +815,74 @@ function mmm()
                     ARGS="$ARGS dist"
                 elif [ "$DIR" = incrementaljavac ]; then
                     ARGS="$ARGS incrementaljavac"
+                elif [ "$DIR" = mka ]; then
+                    MMM_MAKE=mka
                 else
                     echo "No Android.mk in $DIR."
                     return 1
                 fi
             fi
         done
-        ONE_SHOT_MAKEFILE="$MAKEFILE" make -C $T $DASH_ARGS $MODULES $ARGS
+        ONE_SHOT_MAKEFILE="$MAKEFILE" $MMM_MAKE -C $T -f build/core/main.mk $DASH_ARGS $MODULES $ARGS
     else
         echo "Couldn't locate the top of the tree.  Try setting TOP."
     fi
+}
+
+function mma()
+{
+  if [ -f build/core/envsetup.mk -a -f Makefile ]; then
+    make $@
+  else
+    T=$(gettop)
+    if [ ! "$T" ]; then
+      echo "Couldn't locate the top of the tree.  Try setting TOP."
+    fi
+    local MY_PWD=`PWD= /bin/pwd|sed 's:'$T'/::'`
+    make -C $T -f build/core/main.mk $@ all_modules BUILD_MODULES_IN_PATHS="$MY_PWD"
+  fi
+}
+
+function mmma()
+{
+  T=$(gettop)
+  if [ "$T" ]; then
+    local DASH_ARGS=$(echo "$@" | awk -v RS=" " -v ORS=" " '/^-.*$/')
+    local DIRS=$(echo "$@" | awk -v RS=" " -v ORS=" " '/^[^-].*$/')
+    local MY_PWD=`PWD= /bin/pwd`
+    if [ "$MY_PWD" = "$T" ]; then
+      MY_PWD=
+    else
+      MY_PWD=`echo $MY_PWD|sed 's:'$T'/::'`
+    fi
+    local DIR=
+    local MODULE_PATHS=
+    local ARGS=
+    for DIR in $DIRS ; do
+      if [ -d $DIR ]; then
+        if [ "$MY_PWD" = "" ]; then
+          MODULE_PATHS="$MODULE_PATHS $DIR"
+        else
+          MODULE_PATHS="$MODULE_PATHS $MY_PWD/$DIR"
+        fi
+      else
+        case $DIR in
+          showcommands | snod | dist | incrementaljavac) ARGS="$ARGS $DIR";;
+          *) echo "Couldn't find directory $DIR"; return 1;;
+        esac
+      fi
+    done
+    make -C $T -f build/core/main.mk $DASH_ARGS $ARGS all_modules BUILD_MODULES_IN_PATHS="$MODULE_PATHS"
+  else
+    echo "Couldn't locate the top of the tree.  Try setting TOP."
+  fi
 }
 
 function croot()
 {
     T=$(gettop)
     if [ "$T" ]; then
-        cd $(gettop)
+        \cd $(gettop)
     else
         echo "Couldn't locate the top of the tree.  Try setting TOP."
     fi
@@ -842,20 +900,17 @@ function cout()
 function cproj()
 {
     TOPFILE=build/core/envsetup.mk
-    # We redirect cd to /dev/null in case it's aliased to
-    # a command that prints something as a side-effect
-    # (like pushd)
     local HERE=$PWD
     T=
     while [ \( ! \( -f $TOPFILE \) \) -a \( $PWD != "/" \) ]; do
         T=$PWD
         if [ -f "$T/Android.mk" ]; then
-            cd $T
+            \cd $T
             return
         fi
-        cd .. > /dev/null
+        \cd ..
     done
-    cd $HERE > /dev/null
+    \cd $HERE
     echo "can't find Android.mk"
 }
 
@@ -874,7 +929,45 @@ function pid()
 # to the usual ANR traces file
 function systemstack()
 {
-    adb shell echo '""' '>>' /data/anr/traces.txt && adb shell chmod 776 /data/anr/traces.txt && adb shell kill -3 $(pid system_server)
+    stacks system_server
+}
+
+function stacks()
+{
+    if [[ $1 =~ ^[0-9]+$ ]] ; then
+        local PID="$1"
+    elif [ "$1" ] ; then
+        local PID=$(pid $1)
+    else
+        echo "usage: stacks [pid|process name]"
+    fi
+
+    if [ "$PID" ] ; then
+        local TRACES=/data/anr/traces.txt
+        local ORIG=/data/anr/traces.orig
+        local TMP=/data/anr/traces.tmp
+
+        # Keep original traces to avoid clobbering
+        adb shell mv $TRACES $ORIG
+
+        # Make sure we have a usable file
+        adb shell touch $TRACES
+        adb shell chmod 666 $TRACES
+
+        # Dump stacks and wait for dump to finish
+        adb shell kill -3 $PID
+        adb shell notify $TRACES
+
+        # Restore original stacks, and show current output
+        adb shell mv $TRACES $TMP
+        adb shell mv $ORIG $TRACES
+        adb shell cat $TMP | less -S
+    fi
+}
+
+function gdbwrapper()
+{
+    $ANDROID_TOOLCHAIN/$GDB -x "$@"
 }
 
 function gdbclient()
@@ -908,13 +1001,24 @@ function gdbclient()
            PORT=":5039"
        fi
 
-       local PID
-       local PROG="$3"
-       if [ "$PROG" ] ; then
-           if [[ "$PROG" =~ ^[0-9]+$ ]] ; then
-               PID="$3"
-           else
+       local PID="$3"
+       if [ "$PID" ] ; then
+           if [[ ! "$PID" =~ ^[0-9]+$ ]] ; then
                PID=`pid $3`
+               if [[ ! "$PID" =~ ^[0-9]+$ ]] ; then
+                   # that likely didn't work because of returning multiple processes
+                   # try again, filtering by root processes (don't contain colon)
+                   PID=`adb shell ps | grep $3 | grep -v ":" | awk '{print $2}'`
+                   if [[ ! "$PID" =~ ^[0-9]+$ ]]
+                   then
+                       echo "Couldn't resolve '$3' to single PID"
+                       return 1
+                   else
+                       echo ""
+                       echo "WARNING: multiple processes matching '$3' observed, using root process"
+                       echo ""
+                   fi
+               fi
            fi
            adb forward "tcp$PORT" "tcp$PORT"
            adb shell gdbserver $PORT --attach $PID &
@@ -924,7 +1028,7 @@ function gdbclient()
                echo "If you haven't done so already, do this first on the device:"
                echo "    gdbserver $PORT /system/bin/$EXE"
                    echo " or"
-               echo "    gdbserver $PORT --attach $PID"
+               echo "    gdbserver $PORT --attach <PID>"
                echo ""
        fi
 
@@ -933,7 +1037,7 @@ function gdbclient()
        echo >>"$OUT_ROOT/gdbclient.cmds" "target remote $PORT"
        echo >>"$OUT_ROOT/gdbclient.cmds" ""
 
-       $ANDROID_TOOLCHAIN/$GDB -x "$OUT_ROOT/gdbclient.cmds" "$OUT_EXE_SYMBOLS/$EXE"
+       gdbwrapper "$OUT_ROOT/gdbclient.cmds" "$OUT_EXE_SYMBOLS/$EXE"
   else
        echo "Unable to determine build system output dir."
    fi
@@ -974,6 +1078,16 @@ function cgrep()
 function resgrep()
 {
     for dir in `find . -name .repo -prune -o -name .git -prune -o -name res -type d`; do find $dir -type f -name '*\.xml' -print0 | xargs -0 grep --color -n "$@"; done;
+}
+
+function mangrep()
+{
+    find . -name .repo -prune -o -name .git -prune -o -path ./out -prune -o -type f -name 'AndroidManifest.xml' -print0 | xargs -0 grep --color -n "$@"
+}
+
+function sepgrep()
+{
+    find . -name .repo -prune -o -name .git -prune -o -path ./out -prune -o -name sepolicy -type d -print0 | xargs -0 grep --color -n -r --exclude-dir=\.git "$@"
 }
 
 case `uname -s` in
@@ -1195,7 +1309,7 @@ function smoketest()
         return
     fi
 
-    (cd "$T" && make SmokeTest SmokeTestApp) &&
+    (\cd "$T" && mmm tests/SmokeTest) &&
       adb uninstall com.android.smoketest > /dev/null &&
       adb uninstall com.android.smoketest.tests > /dev/null &&
       adb install $ANDROID_PRODUCT_OUT/data/app/SmokeTestApp.apk &&
@@ -1222,7 +1336,7 @@ function godir () {
     T=$(gettop)
     if [[ ! -f $T/filelist ]]; then
         echo -n "Creating index..."
-        (cd $T; find . -wholename ./out -prune -o -wholename ./.repo -prune -o -type f > filelist)
+        (\cd $T; find . -wholename ./out -prune -o -wholename ./.repo -prune -o -type f > filelist)
         echo " Done"
         echo ""
     fi
@@ -1255,7 +1369,7 @@ function godir () {
     else
         pathname=${lines[0]}
     fi
-    cd $T/$pathname
+    \cd $T/$pathname
 }
 
 function mka() {
@@ -1381,6 +1495,25 @@ function repopick() {
     $T/build/tools/repopick.py $@
 }
 
+function fixup_common_out_dir() {
+    common_out_dir=$(get_build_var OUT_DIR)/target/common
+    target_device=$(get_build_var TARGET_DEVICE)
+    if [ ! -z $CM_FIXUP_COMMON_OUT ]; then
+        if [ -d ${common_out_dir} ] && [ ! -L ${common_out_dir} ]; then
+            mv ${common_out_dir} ${common_out_dir}-${target_device}
+            ln -s ${common_out_dir}-${target_device} ${common_out_dir}
+        else
+            [ -L ${common_out_dir} ] && rm ${common_out_dir}
+            mkdir -p ${common_out_dir}-${target_device}
+            ln -s ${common_out_dir}-${target_device} ${common_out_dir}
+        fi
+    else
+        [ -L ${common_out_dir} ] && rm ${common_out_dir}
+        mkdir -p ${common_out_dir}
+    fi
+}
+
+
 # Force JAVA_HOME to point to java 1.6 if it isn't already set
 function set_java_home() {
     if [ ! "$JAVA_HOME" ]; then
@@ -1393,6 +1526,19 @@ function set_java_home() {
                 ;;
         esac
     fi
+}
+
+# Print colored exit condition
+function pez {
+    "$@"
+    local retval=$?
+    if [ $retval -ne 0 ]
+    then
+        echo -e "\e[0;31mFAILURE\e[00m"
+    else
+        echo -e "\e[0;32mSUCCESS\e[00m"
+    fi
+    return $retval
 }
 
 if [ "x$SHELL" != "x/bin/bash" ]; then

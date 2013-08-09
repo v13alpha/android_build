@@ -26,10 +26,12 @@ PRODUCT_PACKAGES := \
     Calculator \
     CertInstaller \
     DrmProvider \
-    Email2 \
+    Email \
     Exchange2 \
     Gallery2 \
+    LatinIME
     Music \
+    Provision \
     Settings \
     Sync \
     Updater \

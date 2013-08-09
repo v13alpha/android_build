@@ -19,6 +19,6 @@
 # mostly because screen densities interfere with the list of locales and
 # the system misbehaves when a density is the first locale.
 
-# Those are all the locales that have translations and are displayable
+# These are all the locales that have translations and are displayable
 # by TextView in this branch.
 PRODUCT_LOCALES := en_US
