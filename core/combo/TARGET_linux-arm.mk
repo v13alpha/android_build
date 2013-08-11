@@ -88,6 +88,7 @@ else
                             -Wstrict-aliasing=3 \
                             -Werror=strict-aliasing
 endif
+
 # Modules can choose to compile some source as thumb. As
 # non-thumb enabled targets are supported, this is treated
 # as a 'hint'. If thumb is not enabled, these files are just

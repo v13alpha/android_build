@@ -29,7 +29,7 @@ PRODUCT_PACKAGES := \
     Email \
     Exchange2 \
     Gallery2 \
-    LatinIME
+    LatinIME \
     Music \
     Provision \
     Settings \
