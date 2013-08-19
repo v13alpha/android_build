@@ -26,8 +26,6 @@ PRODUCT_PACKAGES += \
     ContactsProvider \
     DefaultContainerService \
     KeyChain \
-    MediaProvider \
-    PackageInstaller \
     PicoTts \
     SharedStorageBackup \
     TelephonyProvider \
@@ -41,9 +39,6 @@ PRODUCT_PACKAGES += \
     libbcc \
     libfilterpack_imageproc \
     libgabi++ \
-    libicui18n \
-    libicuuc \
-    libjavacore \
     libkeystore \
     libmdnssd \
     libnfc_ndef \
