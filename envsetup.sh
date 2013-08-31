@@ -6,9 +6,9 @@ Invoke ". build/envsetup.sh" from your shell to add the following functions to y
 - croot:   Changes directory to the top of the tree.
 - cout:    Changes directory to out.
 - m:       Makes from the top of the tree.
-- mm:      Builds all of the modules in the current directory.
+- mm:      Builds all of the modules in the current directory, but not their dependencies.
 - mmp:     Builds all of the modules in the current directory and pushes them to the device.
-- mmm:     Builds all of the modules in the supplied directories.
+- mmm:     Builds all of the modules in the supplied directories, but not their dependencies.
 - mmmp:    Builds all of the modules in the supplied directories and pushes them to the device.
 - mma:     Builds all of the modules in the current directory, and their dependencies.
 - mmma:    Builds all of the modules in the supplied directories, and their dependencies.
@@ -235,52 +235,35 @@ function settitle()
         local product=$TARGET_PRODUCT
         local variant=$TARGET_BUILD_VARIANT
         local apps=$TARGET_BUILD_APPS
-        if [ -z "$PROMPT_COMMAND"  ]; then
-            # No prompts
-            PROMPT_COMMAND="echo -ne \"\033]0;${USER}@${HOSTNAME}: ${PWD}\007\""
-        elif [ -z "$(echo $PROMPT_COMMAND | grep '033]0;')" ]; then
-            # Prompts exist, but no hardstatus
-            PROMPT_COMMAND="echo -ne \"\033]0;${USER}@${HOSTNAME}: ${PWD}\007\";${PROMPT_COMMAND}"
-        fi
-        if [ ! -z "$ANDROID_PROMPT_PREFIX" ]; then
-            PROMPT_COMMAND="$(echo $PROMPT_COMMAND | sed -e 's/$ANDROID_PROMPT_PREFIX //g')"
-        fi
-
         if [ -z "$apps" ]; then
-            ANDROID_PROMPT_PREFIX="[${arch}-${product}-${variant}]"
+            export PROMPT_COMMAND="echo -ne \"\033]0;[${arch}-${product}-${variant}] ${USER}@${HOSTNAME}: ${PWD}\007\""
         else
-            ANDROID_PROMPT_PREFIX="[$arch $apps $variant]"
+            export PROMPT_COMMAND="echo -ne \"\033]0;[$arch $apps $variant] ${USER}@${HOSTNAME}: ${PWD}\007\""
         fi
-        export ANDROID_PROMPT_PREFIX
-
-        # Inject build data into hardstatus
-        export PROMPT_COMMAND="$(echo $PROMPT_COMMAND | sed -e 's/\\033]0;\(.*\)\\007/\\033]0;$ANDROID_PROMPT_PREFIX \1\\007/g')"
     fi
 }
 
 function addcompletions()
 {
+    local T dir f
+
     # Keep us from trying to run in something that isn't bash.
     if [ -z "${BASH_VERSION}" ]; then
         return
     fi
 
     # Keep us from trying to run in bash that's too old.
-    if [ "${BASH_VERSINFO[0]}" -lt 4 ] ; then
+    if [ ${BASH_VERSINFO[0]} -lt 3 ]; then
         return
     fi
 
-    local T dir f
-
-    dirs="sdk/bash_completion vendor/liquid/bash_completion"
-    for dir in $dirs; do
+    dir="sdk/bash_completion"
     if [ -d ${dir} ]; then
         for f in `/bin/ls ${dir}/[a-z]*.bash 2> /dev/null`; do
             echo "including $f"
             . $f
         done
     fi
-    done
 }
 
 function choosetype()
@@ -465,15 +448,8 @@ function print_lunch_menu()
     local uname=$(uname)
     echo
     echo "You're building on" $uname
-    if [ "$(uname)" = "Darwin" ] ; then
-       echo "  (ohai, koush!)"
-    fi
     echo
-    if [ "z${LIQUID_DEVICES_ONLY}" == "z" ]; then
-       echo "Breakfast menu... pick a combo:"
-    else
-       echo "Lunch menu... pick a combo:"
-    fi
+    echo "Lunch menu... pick a combo:"
 
     local i=1
     local choice
@@ -483,55 +459,8 @@ function print_lunch_menu()
         i=$(($i+1))
     done | column
 
-    if [ "z${LIQUID_DEVICES_ONLY}" != "z" ]; then
-       echo "... and don't forget the bacon!"
-    fi
-
     echo
 }
-
-function brunch()
-{
-    breakfast $*
-    if [ $? -eq 0 ]; then
-        mka liquid
-    else
-        echo "No such item in brunch menu. Try 'breakfast'"
-        return 1
-    fi
-    return $?
-}
-
-function breakfast()
-{
-    target=$1
-    LIQUID_DEVICES_ONLY="true"
-    unset LUNCH_MENU_CHOICES
-    add_lunch_combo full-eng
-    for f in `/bin/ls vendor/liquid/vendorsetup.sh 2> /dev/null`
-        do
-            echo "including $f"
-            . $f
-        done
-    unset f
-
-    if [ $# -eq 0 ]; then
-        # No arguments, so let's have the full menu
-        lunch
-    else
-        echo "z$target" | grep -q "-"
-        if [ $? -eq 0 ]; then
-            # A buildtype was specified, assume a full device name
-            lunch $target
-        else
-            # This is probably just the model name
-            lunch liquid_$target-userdebug
-        fi
-    fi
-    return $?
-}
-
-alias bib=breakfast
 
 function lunch()
 {
@@ -766,17 +695,10 @@ function findmakefile()
 
 function mm()
 {
-    local MM_MAKE=make
-    local ARG=
-    for ARG in $@ ; do
-        if [ "$ARG" = mka ]; then
-            MM_MAKE=mka
-        fi
-    done
     # If we're sitting in the root of the build tree, just do a
     # normal make.
     if [ -f build/core/envsetup.mk -a -f Makefile ]; then
-        $MM_MAKE $@
+        make $@
     else
         # Find the closest Android.mk file.
         T=$(gettop)
@@ -788,14 +710,13 @@ function mm()
         elif [ ! "$M" ]; then
             echo "Couldn't locate a makefile from the current directory."
         else
-            ONE_SHOT_MAKEFILE=$M $MM_MAKE -C $T -f build/core/main.mk all_modules $@
+            ONE_SHOT_MAKEFILE=$M make -C $T -f build/core/main.mk all_modules $@
         fi
     fi
 }
 
 function mmm()
 {
-    local MMM_MAKE=make
     T=$(gettop)
     if [ "$T" ]; then
         local MAKEFILE=
@@ -830,15 +751,13 @@ function mmm()
                     ARGS="$ARGS dist"
                 elif [ "$DIR" = incrementaljavac ]; then
                     ARGS="$ARGS incrementaljavac"
-                elif [ "$DIR" = mka ]; then
-                    MMM_MAKE=mka
                 else
                     echo "No Android.mk in $DIR."
                     return 1
                 fi
             fi
         done
-        ONE_SHOT_MAKEFILE="$MAKEFILE" $MMM_MAKE -C $T -f build/core/main.mk $DASH_ARGS $MODULES $ARGS
+        ONE_SHOT_MAKEFILE="$MAKEFILE" make -C $T -f build/core/main.mk $DASH_ARGS $MODULES $ARGS
     else
         echo "Couldn't locate the top of the tree.  Try setting TOP."
     fi
@@ -1437,7 +1356,6 @@ fi
 
 # Execute the contents of any vendorsetup.sh files we can find.
 for f in `/bin/ls vendor/*/vendorsetup.sh vendor/*/*/vendorsetup.sh device/*/*/vendorsetup.sh 2> /dev/null`
-
 do
     echo "including $f"
     . $f

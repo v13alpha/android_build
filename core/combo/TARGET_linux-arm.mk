@@ -68,13 +68,18 @@ endif
 
 TARGET_NO_UNDEFINED_LDFLAGS := -Wl,--no-undefined
 ifeq ($(USE_MORE_OPT_FLAGS),yes)
-    TARGET_arm_CFLAGS :=    -O3 \
+    TARGET_arm_CFLAGS :=    -Os \
+                            -fno-tree-vectorize \
+                            -fno-inline-functions \
+                            -fgcse-after-reload \
+                            -fipa-cp-clone \
+                            -fpredictive-commoning \
+                            -fsched-spec-load \
+                            -fvect-cost-model \
                             -fomit-frame-pointer \
                             -fstrict-aliasing \
                             -Wstrict-aliasing=3 \
-                            -Werror=strict-aliasing \
-                            -funswitch-loops \
-                            -fno-tree-vectorize
+                            -funswitch-loops
 else
     TARGET_arm_CFLAGS :=    -O2 \
                             -fgcse-after-reload \
@@ -96,11 +101,19 @@ endif
 ifeq ($(ARCH_ARM_HAVE_THUMB_SUPPORT),true)
     ifeq ($(USE_MORE_OPT_FLAGS),yes)
         TARGET_thumb_CFLAGS :=  -mthumb \
-                                -O3 \
+                                -Os \
+                                -fno-tree-vectorize \
+                                -fno-inline-functions \
+                                -fno-unswitch-loops \
+                                -fgcse-after-reload \
+                                -fipa-cp-clone \
+                                -fpredictive-commoning \
+                                -fsched-spec-load \
+                                -funswitch-loops \
+                                -fvect-cost-model \
                                 -fomit-frame-pointer \
                                 -fstrict-aliasing \
-                                -Wstrict-aliasing=3 \
-                                -Werror=strict-aliasing
+                                -Wstrict-aliasing=3
     else
         TARGET_thumb_CFLAGS :=  -mthumb \
                                 -Os \
@@ -181,7 +194,6 @@ TARGET_GLOBAL_LDFLAGS += \
 			-Wl,-z,relro \
 			-Wl,-z,now \
 			-Wl,--warn-shared-textrel \
-			-Wl,--fatal-warnings \
 			-Wl,--icf=safe \
 			$(arch_variant_ldflags)
 
@@ -197,7 +209,6 @@ ifndef TARGET_EXTRA_CFLAGS
         -DNDEBUG \
         -g \
         -Wstrict-aliasing=3 \
-        -Werror=strict-aliasing \
         -fgcse-after-reload \
         -frerun-cse-after-loop \
         -frename-registers
@@ -206,7 +217,6 @@ else
         -DNDEBUG \
         -g \
         -Wstrict-aliasing=3 \
-        -Werror=strict-aliasing \
         -fgcse-after-reload \
         -frerun-cse-after-loop \
         -frename-registers
