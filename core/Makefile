@@ -166,7 +166,7 @@ $(INSTALLED_BUILD_PROP_TARGET): $(BUILDINFO_SH) $(INTERNAL_BUILD_ID_MAKEFILE) $(
 	@mkdir -p $(dir $@)
 	$(hide) TARGET_BUILD_TYPE="$(TARGET_BUILD_VARIANT)" \
 			TARGET_DEVICE="$(TARGET_DEVICE)" \
-			LIQUID_DEVICE="$(TARGET_DEVICE)" \
+			VALIDUS_DEVICE="$(TARGET_DEVICE)" \
 			PRODUCT_NAME="$(TARGET_PRODUCT)" \
 			PRODUCT_BRAND="$(PRODUCT_BRAND)" \
 			PRODUCT_DEFAULT_LANGUAGE="$(call default-locale-language,$(PRODUCT_LOCALES))" \
@@ -1336,7 +1336,7 @@ ifneq ($(recovery_fstab),)
 # -----------------------------------------------------------------
 # OTA update package
 
-name := $(TARGET_PRODUCT)
+name := $(VALIDUS13)
 ifeq ($(TARGET_BUILD_TYPE),debug)
   name := $(name)_debug
 endif
@@ -1399,7 +1399,7 @@ endif
 # -----------------------------------------------------------------
 # The update package
 
-name := $(TARGET_PRODUCT)
+name := $(VALIDUS13)
 ifeq ($(TARGET_BUILD_TYPE),debug)
   name := $(name)_debug
 endif
@@ -1441,7 +1441,7 @@ ifdef is_tests_build
 # This is very similar to BUILT_TARGET_FILES_PACKAGE, but we
 # only grab DATA, and it's called "*-tests-*.zip".
 #
-name := $(TARGET_PRODUCT)
+name := $(VALIDUS13)
 ifeq ($(TARGET_BUILD_TYPE),debug)
   name := $(name)_debug
 endif
@@ -1478,7 +1478,7 @@ endif # is_tests_build
 # A zip of the symbols directory.  Keep the full paths to make it
 # more obvious where these files came from.
 #
-name := $(TARGET_PRODUCT)
+name := $(VALIDUS13)
 ifeq ($(TARGET_BUILD_TYPE),debug)
   name := $(name)_debug
 endif
