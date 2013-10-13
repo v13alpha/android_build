@@ -1385,7 +1385,7 @@ $(INTERNAL_OTA_PACKAGE_TARGET): $(BUILT_TARGET_FILES_PACKAGE) $(DISTTOOLS)
 	   $(BUILT_TARGET_FILES_PACKAGE) $@
 endif
 
-.PHONY: otapackage liquid
+.PHONY: otapackage validus
 otapackage: $(INTERNAL_OTA_PACKAGE_TARGET)
 liquid: otapackage
 ifneq ($(TARGET_CUSTOM_RELEASETOOL),)
@@ -1396,6 +1396,9 @@ else
 	$(hide) OTAPACKAGE=$(INTERNAL_OTA_PACKAGE_TARGET) APKCERTS=$(APKCERTS_FILE) ./vendor/liquid/tools/squisher
 endif
 
+        $(hide) ln -f $(INTERNAL_OTA_PACKAGE_TARGET) $(V13_TARGET_PACKAGE)
+        $(hide) $(MD5SUM) $(OSE_TARGET_PACKAGE) > $(V13_TARGET_PACKAGE).md5sum
+        @echo -e ${CL_CYN}"Package Complete: $(V13_TARGET_PACKAGE)"${CL_RST} 
 # -----------------------------------------------------------------
 # The update package
 
@@ -1405,7 +1408,7 @@ ifeq ($(TARGET_BUILD_TYPE),debug)
 endif
 name := $(name)-img-$(FILE_NAME_TAG)
 
-INTERNAL_UPDATE_PACKAGE_TARGET := $(PRODUCT_OUT)/$(name).zip
+INTERNAL_UPDATE_PACKAGE_TARGET := $(PRODUCT_OUT)/V13-(name).zip
 
 ifeq ($(TARGET_RELEASETOOLS_EXTENSIONS),)
 # default to common dir for device vendor
