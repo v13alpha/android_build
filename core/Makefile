@@ -1396,9 +1396,7 @@ else
 	$(hide) OTAPACKAGE=$(INTERNAL_OTA_PACKAGE_TARGET) APKCERTS=$(APKCERTS_FILE) ./vendor/liquid/tools/squisher
 endif
 
-        $(hide) ln -f $(INTERNAL_OTA_PACKAGE_TARGET) $(V13_TARGET_PACKAGE)
-        $(hide) $(MD5SUM) $(OSE_TARGET_PACKAGE) > $(V13_TARGET_PACKAGE).md5sum
-        @echo -e ${CL_CYN}"Package Complete: $(V13_TARGET_PACKAGE)"${CL_RST} 
+        
 # -----------------------------------------------------------------
 # The update package
 
