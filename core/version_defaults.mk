@@ -81,7 +81,7 @@ ifeq "" "$(BUILD_ID)"
   # word and a valid file name.
   #
   # If there is no BUILD_ID set, make it obvious.
-  BUILD_ID := UNKNOWN
+  BUILD_ID := V13_M1
 endif
 
 ifeq "" "$(BUILD_NUMBER)"
